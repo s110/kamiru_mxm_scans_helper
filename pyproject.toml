@@ -1,0 +1,12 @@
+[project]
+name = "kamiru-mxm-scans-helper"
+version = "0.1.0"
+description = "Pipeline automatizado de pre-impresión y post-escaneo para mixed media animation."
+requires-python = ">=3.10"
+dependencies = [
+    "Pillow>=10.0",
+    "opencv-python>=4.8",
+    "numpy>=1.24",
+    "qrcode[pil]>=7.4",
+    "pyzbar>=0.1.9",
+]
