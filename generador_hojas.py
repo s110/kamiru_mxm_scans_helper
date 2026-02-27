@@ -60,6 +60,7 @@ QR_MARGIN_PX = 10     # Margen entre frame y QR
 GRID_COLS = 2
 GRID_ROWS = 2
 FRAMES_PER_SHEET = GRID_COLS * GRID_ROWS  # 4
+FRAME_SPACING_PX = 80 # Espacio mínimo entre fotogramas para evitar mezcla de pintura
 
 # Margen del área segura (espacio reservado para ArUcos + padding)
 SAFE_MARGIN_PX = ARUCO_SIZE_PX + ARUCO_MARGIN_PX + 20
@@ -166,15 +167,19 @@ def calcular_grilla_2x2(
     area_w = canvas_w - 2 * SAFE_MARGIN_PX
     area_h = canvas_h - 2 * SAFE_MARGIN_PX
 
-    # Cada celda
-    cell_w = area_w // GRID_COLS
-    cell_h = area_h // GRID_ROWS
+    # Restar el espacio muerto entre cuadrantes de la zona útil total
+    gap_w = FRAME_SPACING_PX * (GRID_COLS - 1)
+    gap_h = FRAME_SPACING_PX * (GRID_ROWS - 1)
+
+    # Dimensiones puras de cada cuadrante individual
+    cell_w = (area_w - gap_w) // GRID_COLS
+    cell_h = (area_h - gap_h) // GRID_ROWS
 
     cuadrantes = []
     for row in range(GRID_ROWS):
         for col in range(GRID_COLS):
-            x = area_x + col * cell_w
-            y = area_y + row * cell_h
+            x = area_x + col * (cell_w + FRAME_SPACING_PX)
+            y = area_y + row * (cell_h + FRAME_SPACING_PX)
             # El espacio para el frame se reduce para dejar lugar al QR + texto
             frame_h = cell_h - METADATA_HEIGHT_PX
             cuadrantes.append({
@@ -320,7 +325,7 @@ def colocar_qrs(
 
     # Intentar usar una fuente con tamaño razonable para el texto
     try:
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 16)
+        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 46)
     except (OSError, IOError):
         font = ImageFont.load_default()
 
@@ -342,8 +347,8 @@ def colocar_qrs(
         posiciones_qr[nombre] = [qr_x, qr_y, qr_x + QR_SIZE_PX, qr_y + QR_SIZE_PX]
 
         # Texto legible al lado derecho del QR
-        text_x = qr_x + QR_SIZE_PX + 10
-        text_y = qr_y + QR_SIZE_PX // 2 - 8  # Centrado vertical aprox.
+        text_x = qr_x + QR_SIZE_PX + 20
+        text_y = qr_y + (QR_SIZE_PX - 46) // 2  # Centrado vertical aprox con base en la fuente
         draw.text((text_x, text_y), nombre, fill="black", font=font)
 
     return posiciones_qr
