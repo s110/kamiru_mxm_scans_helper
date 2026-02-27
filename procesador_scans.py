@@ -224,39 +224,16 @@ def leer_qr(recorte_qr_img: np.ndarray) -> str | None:
 
 def guardar_resultado(recorte_frame: np.ndarray, path_original: str, dir_salida: Path):
     """
-    Restaura las proporciones originales en la que existía este archivo
-    antes de la fase física del papel, y la guarda.
+    Guarda el archivo recortado a su resolución total sin escalar hacia abajo.
+    Asegura que siempre termine en _procesado.tiff sin importar la extensión original.
     """
-    # Necesitamos inferir su tamaño original si tuvieramos el original exacto cargado
-    # o leyendo su aspect base. Como el pipeline original garantizaba
-    # que se escaló abajo a X por Y en el papel.
-
-    # En este planteamiento, asumiremos que se va a guardar en 4K UHD.
-    # Dado que "fotogramas hasta 4k", y que podríamos no tener acceso al original.
-    # En proyectos productivos fuertes el original se pasa. Para esta prueba simple,
-    # El archivo será guardado como viene en su enorme resolución y luego podemos bajarla
-    # Con resize a Lanczos 4. El layout JSON tiene su file original, de este mockup lo pasamos a 3840 x 2160
-    # O mantener proporcion
-    
-    # Para la robustez de este proyecto, si exportamos todo a una resolución estándar
-    # asumiendolos videos de youtube estándar apaisadoc:
-    (h, w) = recorte_frame.shape[:2]
-    
-    # Simplemente aplicamos un resize a dimensiones estándar para no guardar gigantes.
-    # Alternativamente, si leemos de disco la imagen original sacaríamos W_orig, H_orig.
-    # Aqui lo forzamos a una escala inferior para no inflar discos sin sentido
-    
-    res_w = w // SCALE_FACTOR
-    res_h = h // SCALE_FACTOR
-    
-    arte_final = cv2.resize(recorte_frame, (res_w, res_h), interpolation=cv2.INTER_LANCZOS4)
-    
-    # Convierte a RGB solo para compatibilidad simple con visor
-    nombre = path_original.replace(".tiff", "_procesado.tiff")
+    path_obj = Path(path_original)
+    nombre = f"{path_obj.stem}_procesado.tiff"
     ruta_final = dir_salida / nombre
     
-    cv2.imwrite(str(ruta_final), arte_final)
-    print(f"      ✅ Frame procesado: {nombre} ({res_w}x{res_h})")
+    cv2.imwrite(str(ruta_final), recorte_frame)
+    h, w = recorte_frame.shape[:2]
+    print(f"      ✅ Frame procesado: {nombre} ({w}x{h})")
 
 # ─────────────────────────────────────────────────────────────
 # PIPELINE PRINCIPAL EN BUCLE MAIN
