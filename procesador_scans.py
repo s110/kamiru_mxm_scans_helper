@@ -73,19 +73,28 @@ def obtener_coordenadas_aruco(img_path: Path) -> dict[int, tuple[float, float]] 
         ya re-escalado al tamaño original (1200 PPI). Retorna None si no
         encuentra los 4.
     """
-    # OpenCV imread podría fallar/ser lento con tiff hiper gigantes.
-    # Leer en su defecto a memoria, o, el usuario debería asegurarse
-    # de tener memoria suficiente. Cargamos:
-    img_bgr = cv2.imread(str(img_path))
+    # IMREAD_UNCHANGED preserva la profundidad de bits original (16-bit si el escáner lo genera)
+    # Esto es CRÍTICO: sin esto, OpenCV trunca 16-bit a 8-bit y se pierde rango dinámico (causa contraste elevado)
+    img_bgr = cv2.imread(str(img_path), cv2.IMREAD_UNCHANGED)
     if img_bgr is None:
         raise ValueError(f"No se pudo leer la imagen: {img_path}")
 
-    # Escalar a la escala proxy (0.25 = 1/4 = 300 ppi aprox)
+    # Si la imagen tiene canal alpha (4 canales), descartarlo
+    if len(img_bgr.shape) == 3 and img_bgr.shape[2] == 4:
+        img_bgr = img_bgr[:, :, :3]
+
+    # Para el proxy de ArUco necesitamos 8-bit. Convertir solo la copia proxy.
     factor_proxy = 1.0 / SCALE_FACTOR
     proxy = cv2.resize(img_bgr, (0, 0), fx=factor_proxy, fy=factor_proxy, interpolation=cv2.INTER_AREA)
 
-    # Convertir a grises
-    gray = cv2.cvtColor(proxy, cv2.COLOR_BGR2GRAY)
+    # Si es 16-bit, normalizar el proxy a 8-bit solo para la detección de ArUco
+    if proxy.dtype == np.uint16:
+        proxy_8bit = (proxy / 256).astype(np.uint8)
+    else:
+        proxy_8bit = proxy
+
+    # Convertir a grises para ArUco
+    gray = cv2.cvtColor(proxy_8bit, cv2.COLOR_BGR2GRAY)
 
     # Configurar ArUco
     aruco_dict = cv2.aruco.getPredefinedDictionary(ARUCO_DICT_TYPE)
@@ -206,6 +215,10 @@ def aplicar_bleed(x1: int, y1: int, x2: int, y2: int, factor_porcentaje: float) 
 
 def leer_qr(recorte_qr_img: np.ndarray) -> str | None:
     """Extrae la información string del código QR, sino devuelve None"""
+    # pyzbar solo acepta 8-bit; si el scan es 16-bit, convertir
+    if recorte_qr_img.dtype == np.uint16:
+        recorte_qr_img = (recorte_qr_img / 256).astype(np.uint8)
+
     # Intentar como bgr
     codigos = decode(recorte_qr_img)
     if not codigos:
@@ -377,7 +390,7 @@ if __name__ == "__main__":
     parser.add_argument("--input", default="./output_landscape", help="Directorio con TIFFs ultra pesados escaneados")
     parser.add_argument("--layout", default="./output_landscape/layout.json", help="Camino del Json bridge")
     parser.add_argument("--output", default="./frames_procesamiento", help="Destino limpios 4K")
-    parser.add_argument("--bleed", type=float, default=0.015, help="Porcentaje para recortar el marco evitando bordes extra (default 1.5%)")
+    parser.add_argument("--bleed", type=float, default=0.015, help="Porcentaje para recortar el marco evitando bordes extra (default 1.5 porciento)")
 
     args = parser.parse_args()
 
