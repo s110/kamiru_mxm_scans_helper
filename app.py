@@ -238,7 +238,7 @@ class MixedMediaApp:
         self.bleed_var = tk.DoubleVar(value=1.5)
 
         self.bleed_label = tk.Label(
-            row, text="Bleed (sangrado): 1.5%", font=FONT_SLIDER,
+            row, text="Bleed (sangrado): 1.5\%", font=FONT_SLIDER,
             bg=BG_CARD, fg=FG_TEXT, width=22, anchor="w"
         )
         self.bleed_label.pack(side=tk.LEFT)
