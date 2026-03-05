@@ -323,11 +323,24 @@ def colocar_qrs(
     posiciones_qr: dict[str, list[int]] = {}
     draw = ImageDraw.Draw(lienzo)
 
-    # Intentar usar una fuente con tamaño razonable para el texto
-    try:
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 46)
-    except (OSError, IOError):
-        font = ImageFont.load_default()
+    # Fuente cross-platform: intentar Linux, Windows y macOS antes de fallback
+    FONT_SIZE = 46
+    font_candidates = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",       # Linux (Debian/Ubuntu/Fedora)
+        "/usr/share/fonts/TTF/DejaVuSans.ttf",                    # Linux (Arch)
+        "C:/Windows/Fonts/arial.ttf",                              # Windows
+        "C:/Windows/Fonts/segoeui.ttf",                            # Windows (Segoe UI)
+        "/System/Library/Fonts/Helvetica.ttc",                     # macOS
+    ]
+    font = None
+    for font_path in font_candidates:
+        try:
+            font = ImageFont.truetype(font_path, FONT_SIZE)
+            break
+        except (OSError, IOError):
+            continue
+    if font is None:
+        font = ImageFont.load_default(size=FONT_SIZE)
 
     for i, frame_path in enumerate(frame_paths):
         if i >= len(cuadrantes):
