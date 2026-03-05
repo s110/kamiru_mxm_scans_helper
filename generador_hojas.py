@@ -617,7 +617,7 @@ def main(input_dir: str = "./frames", output_dir: str = "./output") -> None:
         posiciones_qrs = colocar_qrs(lienzo, cuadrantes, grupo, posiciones_frames)
 
         # f. Guardar hoja como TIFF
-        nombre_hoja = f"hoja_{hoja_num:03d}.tiff"
+        nombre_hoja = f"hoja_{hoja_num:03d}.tif"
         ruta_hoja = Path(output_dir) / nombre_hoja
         guardar_hoja_tiff(lienzo, ruta_hoja)
 

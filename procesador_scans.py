@@ -180,8 +180,9 @@ def alinear_escaneo(
     # Matriz y transformación
     M = cv2.getPerspectiveTransform(src_puntos, dst_puntos)
 
-    # Deforma la imagen en bruto al tamaño perfecto ideal de 1200 PPI (muy exigente de RAM)
-    warp = cv2.warpPerspective(img_gigante, M, (canvas_w, canvas_h), flags=cv2.INTER_LINEAR)
+    # Deforma la imagen en bruto al tamaño perfecto ideal de 1200 PPI
+    # INTER_LANCZOS4 = máxima calidad de interpolación (8x8 kernel)
+    warp = cv2.warpPerspective(img_gigante, M, (canvas_w, canvas_h), flags=cv2.INTER_LANCZOS4)
 
     return warp
 
@@ -225,13 +226,14 @@ def leer_qr(recorte_qr_img: np.ndarray) -> str | None:
 def guardar_resultado(recorte_frame: np.ndarray, path_original: str, dir_salida: Path):
     """
     Guarda el archivo recortado a su resolución total sin escalar hacia abajo.
-    Asegura que siempre termine en _procesado.tiff sin importar la extensión original.
+    Se guarda como TIFF sin compresión para máxima calidad.
     """
     path_obj = Path(path_original)
-    nombre = f"{path_obj.stem}_procesado.tiff"
+    nombre = f"{path_obj.stem}_procesado.tif"
     ruta_final = dir_salida / nombre
     
-    cv2.imwrite(str(ruta_final), recorte_frame)
+    # IMWRITE_TIFF_COMPRESSION=1 = sin compresión = 0 pérdida de datos
+    cv2.imwrite(str(ruta_final), recorte_frame, [cv2.IMWRITE_TIFF_COMPRESSION, 1])
     h, w = recorte_frame.shape[:2]
     print(f"      ✅ Frame procesado: {nombre} ({w}x{h})")
 
