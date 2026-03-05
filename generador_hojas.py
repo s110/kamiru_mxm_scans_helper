@@ -248,6 +248,11 @@ def colocar_frames(
 
         cuadrante = cuadrantes[i]
         with Image.open(frame_path) as frame_original:
+            # Capturar perfil ICC si existe (para preservar fidelidad de color)
+            if hasattr(frame_original, 'info') and 'icc_profile' in frame_original.info:
+                if not hasattr(lienzo, '_icc_profile'):
+                    lienzo._icc_profile = frame_original.info['icc_profile']
+
             # Convertir a RGB si es necesario (por si el TIFF tiene canal alpha)
             if frame_original.mode != "RGB":
                 frame_original = frame_original.convert("RGB")
@@ -481,13 +486,18 @@ def guardar_hoja_tiff(
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Guardar con metadata de resolución DPI
-    lienzo.save(
-        str(output_path),
-        format="TIFF",
-        dpi=(ppi, ppi),
-        compression="tiff_lzw",  # Compresión sin pérdida
-    )
+    # Guardar con metadata de resolución DPI y perfil ICC si existe
+    save_kwargs = {
+        "format": "TIFF",
+        "dpi": (ppi, ppi),
+        "compression": "raw",  # Sin compresión para máxima fidelidad
+    }
+
+    # Preservar perfil ICC capturado de los frames originales
+    if hasattr(lienzo, '_icc_profile') and lienzo._icc_profile:
+        save_kwargs["icc_profile"] = lienzo._icc_profile
+
+    lienzo.save(str(output_path), **save_kwargs)
     print(f"  📄 Hoja guardada: {output_path}")
 
 
