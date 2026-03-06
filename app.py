@@ -12,12 +12,23 @@ Uso:
 from __future__ import annotations
 
 import io
+import os
 import sys
 import threading
 import tkinter as tk
 from tkinter import filedialog, ttk
 from pathlib import Path
 from datetime import datetime
+
+
+def _get_resource_path(filename: str) -> Path:
+    """Devuelve la ruta al recurso, compatible con PyInstaller --onefile."""
+    # Cuando PyInstaller empaqueta, extrae a un directorio temporal _MEIPASS
+    if getattr(sys, 'frozen', False):
+        base = Path(sys._MEIPASS)
+    else:
+        base = Path(__file__).parent
+    return base / filename
 
 
 # ─────────────────────────────────────────────────────────────
@@ -70,11 +81,12 @@ class MixedMediaApp:
         # Centrar la ventana en pantalla
         self._center_window(WINDOW_WIDTH, WINDOW_HEIGHT)
 
-        # Intentar ícono si existe
+        # Cargar ícono del gatito pixel
+        icon_path = _get_resource_path("icon.ico")
         try:
-            self.root.iconbitmap(default="")
+            self.root.iconbitmap(str(icon_path))
         except Exception:
-            pass
+            pass  # Si no encuentra el ícono, continuar sin él
 
         # Variables de estado
         self.running = False
@@ -469,6 +481,16 @@ class MixedMediaApp:
 # ─────────────────────────────────────────────────────────────
 
 def main():
+    # En Windows, establecer el AppUserModelID para que la barra de tareas
+    # muestre nuestro ícono personalizado en vez del ícono genérico de Python
+    try:
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            "kamiru.mxm.scanner.helper"
+        )
+    except (AttributeError, OSError):
+        pass  # No estamos en Windows, no pasa nada
+
     root = tk.Tk()
     app = MixedMediaApp(root)
     root.mainloop()
