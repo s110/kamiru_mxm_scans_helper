@@ -11,7 +11,6 @@ Uso (en PowerShell/CMD):
 El ejecutable resultante estará en la carpeta 'dist/'.
 """
 
-import importlib
 import subprocess
 import sys
 from pathlib import Path
@@ -28,19 +27,37 @@ def _find_pyzbar_dlls() -> list[str]:
     args = []
 
     try:
-        spec = importlib.util.find_spec("pyzbar")
-        if spec and spec.origin:
-            pyzbar_dir = Path(spec.origin).parent
-            dlls = list(pyzbar_dir.glob("*.dll")) + list(pyzbar_dir.glob("*.so")) + list(pyzbar_dir.glob("*.dylib"))
-            for dll in dlls:
-                # Incluir cada DLL en el directorio pyzbar/ del paquete
-                args.extend(["--add-binary", f"{dll}{sep}pyzbar"])
-                print(f"  📎 DLL encontrada: {dll.name}")
+        # Importar pyzbar directamente para encontrar su directorio
+        import pyzbar
+        pyzbar_dir = Path(pyzbar.__file__).parent
 
-            if not dlls:
-                print("  ⚠️  No se encontraron DLLs de pyzbar. Puede que los QR no funcionen en el .exe.")
-        else:
-            print("  ⚠️  No se pudo localizar el paquete pyzbar.")
+        print(f"  📂 Paquete pyzbar encontrado en: {pyzbar_dir}")
+
+        # Buscar todas las DLLs / .so / .dylib dentro del directorio del paquete
+        dll_patterns = ["*.dll", "*.so", "*.so.*", "*.dylib"]
+        dlls = []
+        for pattern in dll_patterns:
+            dlls.extend(pyzbar_dir.glob(pattern))
+
+        for dll in dlls:
+            args.extend(["--add-binary", f"{dll}{sep}pyzbar"])
+            print(f"  📎 DLL encontrada: {dll.name}")
+
+        if not dlls:
+            print("  ⚠️  No se encontraron DLLs de pyzbar en el paquete.")
+            print("     Intentando buscar en todo el entorno...")
+
+            # Buscar en site-packages como fallback
+            site_packages = pyzbar_dir.parent
+            for dll in site_packages.rglob("libzbar*"):
+                args.extend(["--add-binary", f"{dll}{sep}pyzbar"])
+                print(f"  📎 DLL encontrada (fallback): {dll.name}")
+            for dll in site_packages.rglob("libiconv*"):
+                args.extend(["--add-binary", f"{dll}{sep}pyzbar"])
+                print(f"  📎 DLL encontrada (fallback): {dll.name}")
+
+    except ImportError:
+        print("  ⚠️  No se pudo importar pyzbar. Asegúrate de que esté instalado.")
     except Exception as e:
         print(f"  ⚠️  Error buscando DLLs de pyzbar: {e}")
 
