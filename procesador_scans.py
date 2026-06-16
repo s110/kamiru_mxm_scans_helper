@@ -54,6 +54,113 @@ ARUCO_IDS_ESPERADOS = [0, 1, 2, 3]  # TL, TR, BR, BL
 SUPPORTED_EXTENSIONS = {".tif", ".tiff", ".png", ".jpg", ".jpeg"}
 
 # ─────────────────────────────────────────────────────────────
+# E/S ROBUSTA DE IMÁGENES (RUTAS UNICODE EN WINDOWS)
+# ─────────────────────────────────────────────────────────────
+#
+# BUG CLÁSICO DE OPENCV EN WINDOWS:
+#   cv2.imread() y cv2.imwrite() NO soportan rutas con caracteres no-ASCII
+#   (tildes, ñ, etc.) porque internamente usan la codepage ANSI del sistema en
+#   lugar de UTF-8. Una ruta como 'H:\\2da edición TALLER MXM\\Scans 1\\hoja.tif'
+#   hace que imread() devuelva None de forma SILENCIOSA aunque el archivo exista
+#   y Python (pathlib) sí lo haya encontrado. Ese era el origen del error
+#   "No se pudo leer la imagen: ...".
+#
+# SOLUCIÓN:
+#   Abrir/escribir el archivo con Python (que sí maneja Unicode nativamente) y
+#   que OpenCV sólo (de)codifique los bytes en memoria con imdecode/imencode.
+
+
+def leer_imagen_robusta(path: Path, flags: int = cv2.IMREAD_UNCHANGED) -> np.ndarray | None:
+    """
+    Lee una imagen de disco de forma robusta frente a rutas con caracteres
+    no-ASCII (tildes, ñ, espacios especiales) en Windows.
+
+    Estrategia en cascada:
+      1. cv2.imread directo: rápido y de bajo consumo de memoria; funciona si la
+         ruta es 100 % ASCII.
+      2. np.fromfile + cv2.imdecode: Python lee los bytes (soporte Unicode nativo)
+         y OpenCV sólo los decodifica en RAM. Resuelve el bug de la codepage.
+      3. Pillow: último recurso para variantes de TIFF que el libtiff embebido de
+         OpenCV no decodifica; también soporta rutas Unicode nativamente.
+
+    Returns:
+        Matriz numpy (BGR/BGRA, conservando profundidad de bits) o None si ninguna
+        estrategia logra leer el archivo.
+    """
+    path = Path(path)
+    ruta_str = str(path)
+
+    # ── Estrategia 1: ruta directa (rápida, bajo consumo de memoria) ──
+    # Sólo se intenta si la ruta es ASCII; con tildes/ñ en Windows imread()
+    # falla SIEMPRE y además ensucia la consola con un warning, así que la
+    # saltamos y vamos directo a la lectura por bytes (Unicode-safe).
+    if ruta_str.isascii():
+        img = cv2.imread(ruta_str, flags)
+        if img is not None:
+            return img
+
+    # ── Estrategia 2: bytes con Python + decodificación en RAM (Unicode-safe) ──
+    try:
+        buffer = np.fromfile(ruta_str, dtype=np.uint8)
+        if buffer.size > 0:
+            img = cv2.imdecode(buffer, flags)
+            if img is not None:
+                return img
+    except (OSError, ValueError):
+        pass
+
+    # ── Estrategia 3: Pillow (TIFFs exóticos / fallback) ──
+    try:
+        from PIL import Image
+
+        with Image.open(path) as pil_img:
+            arr = np.array(pil_img)
+        # Pillow entrega RGB(A); el resto del pipeline asume orden BGR de OpenCV.
+        if arr.ndim == 3 and arr.shape[2] == 4:
+            arr = cv2.cvtColor(arr, cv2.COLOR_RGBA2BGRA)
+        elif arr.ndim == 3 and arr.shape[2] == 3:
+            arr = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
+        return arr
+    except Exception:
+        return None
+
+
+def escribir_imagen_robusta(path: Path, img: np.ndarray, params: list[int] | None = None) -> bool:
+    """
+    Guarda una imagen en disco soportando rutas Unicode en Windows.
+
+    cv2.imwrite() padece el mismo bug de codepage que imread: si la carpeta de
+    salida tiene tildes/ñ falla SILENCIOSAMENTE (devuelve False) y no escribe
+    nada. Aquí codificamos en memoria y volcamos los bytes con Python.
+
+    Returns:
+        True si el archivo se escribió correctamente, False en caso contrario.
+    """
+    path = Path(path)
+    ruta_str = str(path)
+    params = params or []
+
+    # ── Estrategia 1: imwrite directo (rápido) — sólo si la ruta es ASCII ──
+    if ruta_str.isascii():
+        try:
+            if cv2.imwrite(ruta_str, img, params):
+                return True
+        except cv2.error:
+            pass
+
+    # ── Estrategia 2: codificar en RAM + escribir bytes con Python (Unicode-safe) ──
+    ext = path.suffix if path.suffix else ".tif"
+    try:
+        ok, buffer = cv2.imencode(ext, img, params)
+        if not ok:
+            return False
+        buffer.tofile(ruta_str)
+        return True
+    except (cv2.error, OSError):
+        return False
+
+
+# ─────────────────────────────────────────────────────────────
 # FUNCIONES DE DETECCIÓN RÁPIDA (PROXY)
 # ─────────────────────────────────────────────────────────────
 
@@ -75,9 +182,14 @@ def obtener_coordenadas_aruco(img_path: Path) -> dict[int, tuple[float, float]] 
     """
     # IMREAD_UNCHANGED preserva la profundidad de bits original (16-bit si el escáner lo genera)
     # Esto es CRÍTICO: sin esto, OpenCV trunca 16-bit a 8-bit y se pierde rango dinámico (causa contraste elevado)
-    img_bgr = cv2.imread(str(img_path), cv2.IMREAD_UNCHANGED)
+    # leer_imagen_robusta() evita el bug de OpenCV con rutas Unicode (tildes/ñ) en Windows.
+    img_bgr = leer_imagen_robusta(img_path, cv2.IMREAD_UNCHANGED)
     if img_bgr is None:
-        raise ValueError(f"No se pudo leer la imagen: {img_path}")
+        raise ValueError(
+            f"No se pudo leer la imagen: {img_path}. "
+            f"Verifica que el archivo no esté corrupto, abierto en otro programa, "
+            f"ni protegido contra lectura."
+        )
 
     # Si la imagen tiene canal alpha (4 canales), descartarlo
     if len(img_bgr.shape) == 3 and img_bgr.shape[2] == 4:
@@ -244,11 +356,15 @@ def guardar_resultado(recorte_frame: np.ndarray, path_original: str, dir_salida:
     path_obj = Path(path_original)
     nombre = f"{path_obj.stem}_procesado.tif"
     ruta_final = dir_salida / nombre
-    
+
     # IMWRITE_TIFF_COMPRESSION=1 = sin compresión = 0 pérdida de datos
-    cv2.imwrite(str(ruta_final), recorte_frame, [cv2.IMWRITE_TIFF_COMPRESSION, 1])
+    # escribir_imagen_robusta() evita el bug de OpenCV con rutas Unicode (tildes/ñ) en Windows.
+    ok = escribir_imagen_robusta(ruta_final, recorte_frame, [cv2.IMWRITE_TIFF_COMPRESSION, 1])
     h, w = recorte_frame.shape[:2]
-    print(f"      ✅ Frame procesado: {nombre} ({w}x{h})")
+    if ok:
+        print(f"      ✅ Frame procesado: {nombre} ({w}x{h})")
+    else:
+        print(f"      ❌ [ERROR] No se pudo guardar el frame: {ruta_final}")
 
 # ─────────────────────────────────────────────────────────────
 # PIPELINE PRINCIPAL EN BUCLE MAIN
@@ -296,17 +412,21 @@ def main(
     for index, current_scan in enumerate(scans, start=1):
         print(f"── Procesando {current_scan.name} ({index}/{len(scans)}) ──")
         
-        # OBTENCION Y MATCHEO ARUCO 
+        # OBTENCION Y MATCHEO ARUCO
         try:
             resultado = obtener_coordenadas_aruco(current_scan)
             if not resultado:
                 print(f"    ⚠️ [IGNORADO] No se detectaron los 4 ArUcos en {current_scan.name}.")
                 continue
-            
+
             centros, img_gigante = resultado
-            
+
         except MemoryError:
             print(f"    ❌ [ERROR] ¡Out Of Memory! Archivo demasiado gigante para BGR Array: {current_scan.name}")
+            continue
+        except Exception as e:
+            # Un escaneo ilegible/corrupto no debe abortar el lote completo: se omite y se sigue.
+            print(f"    ❌ [ERROR] No se pudo leer/procesar {current_scan.name}: {e}")
             continue
 
         print(f"    ✓ 4/4 Marcadores detectados con estrategia Proxy")
