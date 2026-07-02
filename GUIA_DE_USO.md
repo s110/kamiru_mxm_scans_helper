@@ -1,3 +1,8 @@
+> ⚠️ **Esta app fue reemplazada por [Kamiru Studio](https://github.com/s110/kamiru_video_to_contact_sheets)**,
+> que une este pipeline con el generador de contact sheets en una sola app con
+> ventana, marcadores redundantes, modo cianotipia, calibración de impresora y
+> más. Los `layout.json` viejos siguen funcionando allá. Ver `README.md`.
+
 # 🎨 Guía de Uso — Pipeline de Mixed Media para Animación
 
 ## ¿Qué hace este sistema?
